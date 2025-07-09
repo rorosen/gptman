@@ -83,7 +83,6 @@ use std::fmt;
 use std::io;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::ops::{Index, IndexMut, RangeInclusive};
-use thiserror::Error;
 
 /// Linux specific helpers
 #[cfg(all(target_os = "linux", feature = "nix"))]
@@ -93,74 +92,105 @@ const DEFAULT_ALIGN: u64 = 2048;
 const MAX_ALIGN: u64 = 16384;
 
 /// An error that can be produced while reading, writing or managing a GPT.
-#[derive(Debug, Error)]
+#[derive(Debug)]
 #[non_exhaustive]
 pub enum Error {
     /// Derialization errors.
-    #[error("deserialization failed")]
-    Deserialize(#[from] DecodeError),
+    Deserialize(DecodeError),
     /// Serialization errors.
-    #[error("seserialization failed")]
-    Seserialize(#[from] EncodeError),
+    Seserialize(EncodeError),
     /// I/O errors.
-    #[error("generic I/O error")]
-    Io(#[from] io::Error),
+    Io(io::Error),
     /// An error that occurs when the signature of the GPT isn't what would be expected ("EFI
     /// PART").
-    #[error("invalid signature")]
     InvalidSignature,
     /// An error that occurs when the revision of the GPT isn't what would be expected (00 00 01
     /// 00).
-    #[error("invalid revision")]
     InvalidRevision,
     /// An error that occurs when the header's size (in bytes) isn't what would be expected (92).
-    #[error("invalid header size")]
     InvalidHeaderSize,
     /// An error that occurs when the CRC32 checksum of the header doesn't match the expected
     /// checksum for the actual header.
-    #[error("corrupted CRC32 checksum ({0} != {1})")]
     InvalidChecksum(u32, u32),
     /// An error that occurs when the CRC32 checksum of the partition entries array doesn't match
     /// the expected checksum for the actual partition entries array.
-    #[error("corrupted partition entry array CRC32 checksum ({0} != {1})")]
     InvalidPartitionEntryArrayChecksum(u32, u32),
     /// An error that occurs when reading a GPT from a file did not succeeded.
     ///
     /// The first argument is the error that occurred when trying to read the primary header.
     /// The second argument is the error that occurred when trying to read the backup header.
-    #[error("could not read primary header ({0}) nor backup header ({1})")]
     ReadError(Box<Error>, Box<Error>),
     /// An error that occurs when there is not enough space left on the table to continue.
-    #[error("no space left")]
     NoSpaceLeft,
     /// An error that occurs when there are partitions with the same GUID in the same array.
-    #[error("conflict of partition GUIDs")]
     ConflictPartitionGUID,
     /// An error that occurs when a partition has an invalid boundary.
     ///
     /// The end sector must be greater or equal to the start sector of the partition.
     ///
     /// Partitions must fit within the disk and must not overlap.
-    #[error(
-        "invalid partition boundaries: partitions must have positive size, must not overlap, \
-        and must fit within the disk"
-    )]
     InvalidPartitionBoundaries,
     /// An error that occurs when the user provide an invalid partition number.
     ///
     /// The partition number must be between 1 and `number_of_partition_entries` (usually 128)
     /// included.
-    #[error("invalid partition number: {0}")]
     InvalidPartitionNumber(u32),
     /// An error that occurs when the user attempts to access information for an unused partition.
-    #[error("unused partition")]
     UnusedPartition,
     /// An operation that required to find a partition, was unable to find that partition.
-    #[error("partition not found")]
     PartitionNotFound,
     /// An arithmetic operation overflowed.
-    #[error("an arithmetic operation overflowed")]
     Overflow,
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Error::Deserialize(_) => write!(f, "deserialization failed"),
+            Error::Seserialize(_) => write!(f, "seserialization failed"),
+            Error::Io(_) => write!(f, "generic I/O error"),
+            Error::InvalidSignature => write!(f, "invalid signature"),
+            Error::InvalidRevision => write!(f, "invalid revision"),
+            Error::InvalidHeaderSize => write!(f, "invalid header size"),
+            Error::InvalidChecksum(expected, actual) =>
+                write!(f, "corrupted CRC32 checksum ({expected} != {actual})"),
+            Error::InvalidPartitionEntryArrayChecksum(expected, actual) =>
+                write!(f, "corrupted partition entry array CRC32 checksum ({expected} != {actual})"),
+            Error::ReadError(e1, e2) =>
+                write!(f, "could not read primary header ({e1}) nor backup header ({e2})"),
+            Error::NoSpaceLeft => write!(f, "no space left"),
+            Error::ConflictPartitionGUID => write!(f, "conflict of partition GUIDs"),
+            Error::InvalidPartitionBoundaries =>
+                write!(
+                    f,
+                    "invalid partition boundaries: partitions must have positive size, must not overlap, \
+                    and must fit within the disk"
+                ),
+            Error::InvalidPartitionNumber(n) =>
+                write!(f, "invalid partition number: {n}"),
+            Error::UnusedPartition => write!(f, "unused partition"),
+            Error::PartitionNotFound => write!(f, "partition not found"),
+            Error::Overflow => write!(f, "an arithmetic operation overflowed"),
+        }
+    }
+}
+
+impl From<DecodeError> for Error {
+    fn from(err: DecodeError) -> Self {
+        Error::Deserialize(err)
+    }
+}
+
+impl From<EncodeError> for Error {
+    fn from(err: EncodeError) -> Self {
+        Error::Seserialize(err)
+    }
+}
+
+impl From<io::Error> for Error {
+    fn from(err: io::Error) -> Self {
+        Error::Io(err)
+    }
 }
 
 /// The result of reading, writing or managing a GPT.
