@@ -1,6 +1,10 @@
 Changelog
 =========
 
+## v2.0.2 (unreleased)
+
+- Remove dependency on thiserror
+
 ## v2.0.1
 
 - Fix underflow when input is shorter than one sector (#141)
